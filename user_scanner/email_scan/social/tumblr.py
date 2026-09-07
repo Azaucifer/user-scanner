@@ -1,9 +1,8 @@
-import asyncio
 import re
-
-from curl_cffi import requests
-
+import json
+import asyncio
 from user_scanner.core.result import Result
+from curl_cffi import requests
 
 # The public web app's bearer token, embedded in the homepage HTML.
 API_TOKEN_RE = re.compile(r'"API_TOKEN":"([^"]+)"')
@@ -90,11 +89,23 @@ def _check_sync(email: str) -> Result:
             json=payload
         )
 
-        if response3.status_code != 200:
+        if response3.status_code == 400:
+            # Check if it's a "User already exists" response
+            try:
+                response_data = response3.json()
+                if "response" in response_data:
+                    data = response_data.get("response")
+                    code = data.get("code")
+                    error_msg = str(data.get("error", "")).lower()
+                    if code == 2 and "user already exists" in error_msg:
+                        return Result.taken(url=show_url)
+            except:
+                pass
+            return Result.error(f"Unexpected HTTP status: {response3.status_code}")
+        elif response3.status_code != 200:
             return Result.error(f"Unexpected HTTP status: {response3.status_code}")
 
         response_data = response3.json()
-        # If the response is directly the object (not wrapped in "response")
         if "response" in response_data:
             data = response_data.get("response")
         else:
